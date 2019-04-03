@@ -17,6 +17,7 @@ from optparse import OptionParser
 
 options = OptionParser(usage='%prog server [options]', description='Test for SSL heartbeat vulnerability (CVE-2014-0160)')
 options.add_option('-p', '--port', type='int', default=8443, help='TCP port to test (default: 8443)')
+options.add_option('-n', '--num', type='int', default=1, help='Number of times to connect/loop (default: 1)')
 
 def h2bin(x):
     return x.replace(' ', '').replace('\n', '').decode('hex')
