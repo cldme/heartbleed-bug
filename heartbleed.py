@@ -104,7 +104,13 @@ def skip(info, pos, stop):
 # method extracts usernames, passwords and session ids (cookies) from leaked info
 def getCredentials(info, key):
     items = []
-    i = info.index(key)
+
+    # If key is not found in the output return
+    if info.find(key) != -1:
+        i = info.index(key)
+    else:
+        return
+
     while i < len(info):
         # Find next user from info string
         i = skip(info, i, '=')
