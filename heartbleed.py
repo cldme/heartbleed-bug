@@ -79,7 +79,7 @@ def consoleLog(msg, quiet):
 
 def logList(list, name, color, quiet, delim = ''):
     # Return without printing (if quite option specified by user)
-    if quiet:
+    if quiet or len(list) < 1:
         return
 
     # Build message string
@@ -174,6 +174,9 @@ def hexdump(s, file, key, quiet, verbose):
     if len(file) == 0 and not quiet:
         print
 
+    if users[0] == '0':
+        users = users[1:]
+
     return users, passwords, cookies, query, hasPwd, hasCookie
 
 def recvall(s, length, timeout=5):
@@ -222,7 +225,7 @@ def hit_hb(s, file, pwd, cookie, key, quiet, verbose):
             users, passwords, cookies, query, hasPwd, hasCookie = hexdump(pay, file, key, quiet, verbose)
 
             # Log to console the list of users
-            logList(users[1:], 'USERS', colors.OKBLUE, quiet)
+            logList(users, 'USERS', colors.OKBLUE, quiet)
             # Log to console the list of passwords
             logList(passwords, 'PASSWORDS', colors.OKBLUE, quiet)
             # Log to console the list of cookies
